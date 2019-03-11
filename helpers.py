@@ -223,7 +223,7 @@ def get_visual_names(page):
     return(visuals)
 
 
-def fetch_table(doc,name):
+def get_table(doc,name):
 
     """Fetches a specific datatable
     args:
