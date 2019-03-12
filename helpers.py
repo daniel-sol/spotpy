@@ -2,6 +2,7 @@
 import logging
 import sys
 import re
+
 def init_logging(name,loglevel=False,file_name=None,full=False):
 
     """
@@ -66,6 +67,53 @@ def init_logging(name,loglevel=False,file_name=None,full=False):
     return(logger)
 
 
+def announce_no_data(name,valid_names,data_type):
+
+    """Announcing that no data is found in a message box
+
+       args:
+
+           name     : str
+           valid_data: list
+           data_type :  str, name of data type not found
+
+       raises: AttributeError if data_type is not in valid_types
+    """
+
+    logger=init_logging(__name__)
+    valid_types=['Page','Table','Chart','Column']
+
+    if data_type not in valid_types:
+
+        raise AttributeError('No such data type in spotfire project')
+
+    else:
+        heading='Page does not exist!'
+        message=('{} with name "{}" does not exist\n'.format(data_type,name)+
+                 'Please choose among the following: \n{}'.format(
+                 '\n'.join(valid_names)))
+        ok_message(message,heading)
+        logger.warning(message)
+        quit
+
+
+def ok_message(message,heading):
+
+    """ Creates information box
+        args:
+
+            message: str, what is what is displayed in box
+
+            heading: str, what is displayed as heading 'name' of box
+
+    """
+    logger=init_logging(__name__)
+    import clr
+    clr.AddReference('System.Windows.Forms')
+    from System.Windows import Forms
+    Forms.MessageBox.Show(message,heading,Forms.MessageBoxButtons.OK)
+
+
 def yes_no_message(message,heading):
 
     """ Creates decision box with yes and no, returns boolean
@@ -98,6 +146,7 @@ def yes_no_message(message,heading):
 
 
 def get_page_names(doc):
+
     """Fetches names of the different pages in a spotfire project
 
     args:
@@ -141,6 +190,75 @@ def get_table_names(doc):
     logger.debug('Returning table')
     return(names)
 
+
+def get_visual_names(page,viz_type='Chart'):
+    """Fetches the visualization names on a page in a spotfire project
+
+    args:
+        page:Spotfire document page instance
+
+    returns:
+        visuals: dictionary of strings, names of the different visualizations
+
+
+    """
+    import Spotfire.Dxp.Application.Visuals as viz
+    visuals={}
+    for visual in page.Visuals:
+        name=visual.Title
+        viz_id=visual.TypeId.Name.replace('Spotfire.','')
+        if re.match(r'.*{}'.format(viz_type),viz_id):
+
+            print(name)
+            print(viz_id)
+            visuals[name]=viz_id
+
+    return(visuals)
+
+
+def get_chart_names(page):
+
+    """Fetches the chart names on a page in a spotfire project
+
+    args:
+
+       page: Spotfire document page instance
+
+       returns:
+
+           charts: dictionary with keys and values as strings
+
+    """
+
+    charts=get_visual_names(page)
+
+    return(charts)
+
+
+def get_table(doc,name):
+
+    """Fetches a specific datatable
+    args:
+        doc: Spotfire document instance
+
+    returns:
+        table: Spotfire data table
+
+    raises: AttributeError: if table with name does not exist
+
+    """
+    logger=init_logging(__name__)
+    (tabletest,table)=doc.Data.Tables.TryGetValue(name)
+    if tabletest:
+
+        return(table)
+
+    else:
+
+        valid_tables=get_table_names(doc)
+        announce_no_data(name,valid_tables,'Table')
+
+
 def page_nr(doc,page_name):
 
     """Fetches a spotfire page, this is just a helper function because
@@ -169,23 +287,20 @@ def page_nr(doc,page_name):
 
     if nr is None:
 
-        #raise AttributeError('Page with name {} does not exist'.format(page_name))
-        logger.info('This is not a valid page name')
-        logger.info('Please choose among the following')
-        logger.info(names)
-        exit()
+        announce_no_data(page_name,names,'Page')
 
     return(nr)
 
 
 def get_page(doc,page_name):
-    """Fetches a a page in a spotfire project
+
+    """Fetches a page in a spotfire project
     args:
         doc:Spotfire document instance
     returns:
-        page: page instance from spotfire project
+        page: page instance from spotfire project, or None, if page does
+              not exist
 
-    raises: AttributeError: if page with name page_name does not exist
     """
     pnr=page_nr(doc,page_name)
 
@@ -194,62 +309,7 @@ def get_page(doc,page_name):
         page=doc.Pages[pnr]
 
     else:
+
         page=None
 
     return(page)
-
-def get_visual_names(page):
-    """Fetches the visualization names on a page in a spotfire project
-
-    args:
-        page:Spotfire document page instance
-
-    returns:
-        visuals: dictionary of strings, names of the different visualizations
-
-
-    """
-    import Spotfire.Dxp.Application.Visuals as viz
-    visuals={}
-    for visual in page.Visuals:
-        name=visual.Title
-        viz_id=visual.TypeId.Name.replace('Spotfire.','')
-        if re.match(r'.*Chart',viz_id):
-
-            print(name)
-            print(viz_id)
-            visuals[name]=viz_id
-
-    return(visuals)
-
-
-def get_table(doc,name):
-
-    """Fetches a specific datatable
-    args:
-        doc: Spotfire document instance
-
-    returns:
-        table: Spotfire data table
-
-    raises: AttributeError: if table with name does not exist
-
-    """
-    logger=init_logging(__name__)
-    (tabletest,table)=doc.Data.Tables.TryGetValue(name)
-    if tabletest:
-
-        return(table)
-
-    else:
-
-        valid_tables=get_table_names(doc)
-        logger.info('This is not a valid table name')
-        logger.info('Please choose among the following')
-        logger.info(valid_tables)
-        raise AttributeError('Table {} does not exist'.format(name))
-
-
-
-
-
