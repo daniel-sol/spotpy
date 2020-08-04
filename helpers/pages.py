@@ -110,7 +110,7 @@ def delete_pages_search(doc, pattern, regex=False):
     delete_pages(doc, del_page_names)
 
 
-def add_page(doc, page_name):
+def add_page(doc, page_name, ask=False):
     """Add page in document
     args:
     doc (Spotfire document instance): document to read from
@@ -119,7 +119,7 @@ def add_page(doc, page_name):
     pages = doc_pages(doc)
     page_names = get_page_names(doc)
     confirmation= True
-    if page_name in page_names:
+    if page_name in page_names and ask:
         heading = 'Overwrite page'
         message = ('You are trying to create a page, but the page name "{}"' +
                    ' exists, do you want to overwrite it? Answering no will' +
@@ -132,7 +132,7 @@ def add_page(doc, page_name):
         pages.AddNew(page_name)
 
 
-def get_page(doc, page_name='Active'):
+def get_page(doc, page_name='Active', ask_create=False):
 
     """Fetches a page in a spotfire project
     args:
@@ -149,13 +149,32 @@ def get_page(doc, page_name='Active'):
         page = doc.ActivePageReference
 
     else:
-        for page in pages:
-            if page.Title == page_name:
+        for check_page in pages:
+            name = check_page.Title
+            LOGGER.debug('Page name: %s', name)
+            if name == page_name:
+                page = check_page
                 break
-    if page is None:
+    LOGGER.debug('Here is page so far:')
+    LOGGER.debug(page)
+    confirmation = True
 
-        page_names = get_page_names(doc)
-        announce_no_data(page_name, page_names, 'page')
-        pass
+    if page is None:
+        LOGGER.debug(('After looking through pages, page with name:' +
+                      ' %s was not found'), page_name)
+        confirmation = False
+        if ask_create:
+            LOGGER.debug('Will ask to create page %s', page_name)
+            heading = 'Page does not exist!'
+            message = 'Do you wanna create page {} ?'.format(page_name)
+            confirmation = yes_no_message(message, heading)
+        else:
+            confirmation = True
+
+    LOGGER.debug('Confirmation is:')
+    LOGGER.debug(confirmation)
+    if confirmation:
+        add_page(doc, page_name, False)
+        page = get_page(doc, page_name)
 
     return page

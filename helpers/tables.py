@@ -1,5 +1,6 @@
 import re
 from basic import init_logging, list_string, controlled_list, create_line
+from basic import join_list
 from basic import get_list_entry
 from boxes import deletion_message, yes_no_message, ok_message
 from boxes import announce_no_data
@@ -25,7 +26,6 @@ def get_table_names(doc):
         names: list of strings, names of the different tables
 
     """
-    LOGGER = init_logging(__name__)
     names = []
     LOGGER.debug('Looping through tables')
     for table in doc_tables(doc):
@@ -154,7 +154,7 @@ def copy_table(doc, table_name, newname):
     tablesource = DataTableDataSource(table)
     try:
         doc.Data.Tables.Add(newname, tablesource)
-        print('Copied table {} to {}'.format(table_name, newname))
+        LOGGER.debug('Copied table {} to {}'.format(table_name, newname))
     except ValueError:
         message = ("Table {} already exists!" +
                    " no copy will be made").format(newname)
@@ -164,7 +164,7 @@ def copy_table(doc, table_name, newname):
     except TypeError:
 
         table.ReplaceData(tablesource)
-        print("This did not work")
+        LOGGER.debug("This did not work")
 
 
 def table_text_writer(list_input):
@@ -181,8 +181,8 @@ def table_text_writer(list_input):
 
 
     list_input = controlled_list(list_input)
-    print(list_input)
-    print('--------')
+    LOGGER.debug(list_input)
+    LOGGER.debug('--------')
     header = controlled_list(list_input.pop(0))
     length_of_header = len(header)
     head_line = create_line(header)
@@ -194,11 +194,11 @@ def table_text_writer(list_input):
     else:
         text =''
 
-        print('Loop')
+        LOGGER.debug('Loop')
         for i, text_list in enumerate(list_input):
 
             text_list = controlled_list(text_list)
-            print(text_list)
+            LOGGER.debug(text_list)
             if len(text_list) != length_of_header:
 
                 message = ('Line {} in text: [{}] does not have ' +
@@ -246,7 +246,7 @@ def make_table(doc, table_name, column_names, data=()):
 
         text_input = [column_names]
         text_input.extend(data)
-        print(text_input)
+        LOGGER.debug(text_input)
         stream = table_text_writer(text_input)
 
         readerSettings = TextDataReaderSettings()
@@ -255,7 +255,7 @@ def make_table(doc, table_name, column_names, data=()):
         for i, col_n in enumerate(controlled_list(column_names)):
 
             readerSettings.SetDataType(i, DataType.String)
-            print(col_n + " Added as column " + str(i))
+            LOGGER.debug(col_n + " Added as column " + str(i))
 
         source = TextFileDataSource(stream, readerSettings)
 
@@ -425,7 +425,7 @@ def make_vector_and_well_table(doc, in_table_name,
                           get_list_entry(well_names, i)])
         i +=1
 
-    print(text_list)
+    LOGGER.debug(text_list)
 
     make_table(doc, out_table_name, header, text_list)
 
@@ -466,6 +466,88 @@ def get_column_names(doc, table_name):
     table = get_table(doc, table_name)
     col_names = [c.Name for c in table.Columns]
     return col_names
+
+
+def get_column_names_search(doc, table_name, pattern, regex=False):
+    """Deletes page in document with pattern in name
+    args:
+    doc (Spotfire document instance): document to read from
+    pattern (string): pattern to find in page_name
+    """
+    column_names = get_column_names(doc, table_name)
+    search_column_names = []
+    LOGGER.debug('Searching for pattern %s', pattern)
+    for column_name in column_names:
+        LOGGER.debug(column_name)
+        found = False
+        if regex:
+            match =re.match(r'{}'.format(pattern), column_name)
+
+            if match:
+                found = True
+        else:
+            if pattern in column_name:
+                found = True
+
+        if found:
+            LOGGER.debug('This is a match %s', column_name)
+            search_column_names.append(column_name)
+    LOGGER.debug('Columns matching  pattern %s: %s',
+                 pattern, list_string(search_column_names))
+    return search_column_names
+
+
+def rename_columns(doc, table_name, orig_names, new_names):
+    """Renames selected columns in data table
+    args:
+    doc (Spotfire document instance): document to read from
+    """
+    LOGGER.debug('--------------')
+    LOGGER.debug(orig_names)
+    LOGGER.debug(new_names)
+    if orig_names and new_names:
+        heading = 'Renaming columns in table {}!'.format(table_name)
+        message = ('Do you want to rename' +
+                   ' {} to {}?').format(list_string(orig_names),
+                                        list_string(new_names))
+        confirmation = yes_no_message(message, heading)
+        if confirmation:
+            table = get_table(doc, table_name)
+            switch_dict = dict(zip(orig_names, new_names))
+
+            LOGGER.debug(switch_dict)
+
+            for col in table.Columns:
+                col_name = col.Name
+                # This does not work in spotfire 10..
+                #LOGGER.debug('%s: %s', col_name, switch_dict[col_name])
+
+                if col_name in orig_names:
+                    try:
+                        new_name = switch_dict[col_name]
+                        col.Name = new_name
+                        LOGGER.debug('Moving %s to %s', col, new_name)
+                    except KeyError:
+                        LOGGER.warning('%s not in list', col)
+                else:
+                    LOGGER.debug('Skipping %s', col_name)
+            LOGGER.debug('Done with swithing')
+      else:
+        heading = 'Nothing to replace!!'
+        message = 'Couldnt find anything to replace in rename columns'
+        ok_message(message, heading)
+
+
+def rename_column_search(doc, table_name, pattern):
+    """Removes pattern in columns matching that pattern
+    args:
+    doc (Spotfire document instance): document to read from
+    """
+    replace_names = get_column_names_search(doc, table_name, pattern)
+    (replace_names)
+    new_names = [s.replace(pattern,'') for s in replace_names]
+    LOGGER.debug(new_names)
+    rename_columns(doc, table_name, replace_names, new_names)
 
 
 def delete_columns(doc, table_name, column_names, box_message=True):
@@ -515,28 +597,21 @@ def delete_columns_search(doc, table_name, pattern, regex=False):
     doc (Spotfire document instance): document to read from
     pattern (string): pattern to find in page_name
     """
-    column_names = get_column_names(doc, table_name)
-    del_column_names = []
-    LOGGER.debug('Searching for pattern %s', pattern)
-    for column_name in column_names:
-        LOGGER.debug(column_name)
-        found = False
-        if regex:
-            match =re.match(r'{}'.format(pattern), column_name)
-
-            if match:
-                found = True
-        else:
-            if pattern in column_name:
-                found = True
-
-        if found:
-            LOGGER.debug('This is a match %s', column_name)
-            del_column_names.append(column_name)
-    LOGGER.debug('Columns matching  pattern %s: %s',
-                 pattern, list_string(del_column_names))
+    del_column_names = get_column_names_search(doc, table_name, pattern)
 
     delete_columns(doc, table_name, del_column_names)
+
+
+def findrowfilter(table):
+    from Spotfire.Dxp.Data import IndexSet
+    """Returns number of rows in a table
+    args:
+       table (spotfire table instance): table to find rows from
+    """
+    #Identify the number of rows in the data table
+    count = table.RowCount
+    rowfilter = IndexSet(count, False)
+    return rowfilter
 
 
 def _delete_rows_(table, rowfilter, printstr='all rows'):
@@ -580,7 +655,7 @@ def delete_all_rows(doc, table_name='Active'):
         rowfilter.AddIndex(row.Index)
 
     rowfilter = rowfilter
-    print('Rows in table' + str(len(str(rowfilter))))
+    LOGGER.debug('Rows in table' + str(len(str(rowfilter))))
     _delete_rows_(table, rowfilter)
 
 
@@ -636,3 +711,9 @@ def get_column_as_list(doc, table_name, col_name):
             values.append(value)
 
     return values
+
+
+def make_mean_table(doc, table_name, mean_table_name, category_names):
+
+
+    pass

@@ -2,6 +2,24 @@
 import logging
 import sys
 import re
+from . import basic
+from . import pages
+from . import tables
+
+
+LOGGER = basic.init_logging(__name__)
+
+
+def viz_as_content(viz):
+    """ Returns a vizualization as visual content
+    args:
+      viz (Spotfire.Dxp.Application.Visuals.Visual): visual
+    returns viz_content (Spotfire.Dxp.Application.Visuals.VisualContent)
+    """
+
+    from Spotfire.Dxp.Application.Visuals import VisualContent
+    viz_content = viz.As[VisualContent]()
+    return viz_content
 
 
 def get_visual_names(page, viz_type=None):
@@ -37,7 +55,7 @@ def get_visual(doc, page_name, viz_name, check=False):
 
     """
     from Spotfire.Dxp.Application.Visuals import VisualContent
-    page = get_page(doc, page_name)
+    page = pages.get_page(doc, page_name)
     viz_names = get_visual_names(page)
     # print(viz_names)
     viz = None
@@ -109,7 +127,7 @@ def add_viz_to_page(doc, viz_type, viz_name, table_name, page_name='Active'):
 
     else:
 
-        page = get_page(doc, page_name)
+        page = pages.get_page(doc, page_name)
         viz = get_visual(doc, page_name, viz_name)
 
         if viz is None:
@@ -120,10 +138,11 @@ def add_viz_to_page(doc, viz_type, viz_name, table_name, page_name='Active'):
             ok_message(message, heading)
 
         print(viz)
-        viz.Data.DataTableReference = get_table(doc, table_name)
+        viz.Data.DataTableReference = tables.get_page(doc, table_name)
         try:
-            viz.Title = viz_name
-            viz.ShowTitle = True
+            viz_cont = viz_as_content(viz)
+            viz_cont.Title = viz_name
+            viz_cont.ShowTitle = True
         except AttributeError:
             print('Cannot set title')
 
@@ -131,19 +150,23 @@ def add_viz_to_page(doc, viz_type, viz_name, table_name, page_name='Active'):
     return viz
 
 
-def make_linechart(doc, viz_type, viz_name, table_name, x_name, y_names,
-                   line_by_names, page_name='Active'):
+def make_linechart(doc, table_name, x_name, y_names,
+                   y_stat_names, line_by_names, page_name='Active',
+                   viz_name=None):
 
     """Adds vizualisation to page
     args:
     doc (Spotfire document instance): document to read from
     page_name (str): name of page
-    viz_type(str): type of visual
     viz_name (str): name of visual
     returns viz (spotfire visual)
     """
+    viz_type = 'linechart'
     viz = add_viz_to_page(doc, viz_type, viz_name, table_name, page_name)
-    viz.Title = viz_name
+    viz_content = viz_as_content(viz)
+    if viz_name is not None:
+        viz_content.Title = viz_name
+
     if x_name == 'DATE':
 
         x_expression = 'BinByDateTime([DATE],"Year.Month",2)'
@@ -151,21 +174,12 @@ def make_linechart(doc, viz_type, viz_name, table_name, x_name, y_names,
     else:
         x_expression = "[" + x_name + "]"
     viz.XAxis.Expression = x_expression
+
     # single line
     color_expression = '<[Axis.Default.Names]>'
 
-    if not isinstance(y_names, list):
-
-        y_expression = y_expression + 'Avg (' + y_names + ')'
-
-    else:
-
-        y_expression = ' Avg (' + y_names.pop(0) + ')'
-
-        for y_name in y_names:
-            y_expression = y_expression + ', Avg (' + y_name + ')'
-    viz.LineByAxis.Expression = '<[Type] NEST [Input Type]>'
-    viz.YAxis.Expression = y_expression
+    viz.YAxis.Expression = basic.create_expression(y_names, y_stat_names)
+    viz.LineByAxis.Expression = basic.create_expression(line_by_names,'')
     viz.ColorAxis.Expression = color_expression
 
     viz.Legend.Visible = True
@@ -179,3 +193,37 @@ def get_html(doc, page_name):
 
     html = viz.As[HtmlTextArea]().HtmlContent
     return html
+
+
+def make_histograms(doc, table_name, column_names, page_name, color_by, bins):
+    """Adds histograms to page
+    args:
+    doc (Spotfire document instance): document to read from
+    table_name (str): name of table to plot data from
+    column_names (list of str): names of columns to plot
+    page_name (str): name of page
+    color_byt (list of str): names of columns to colour by
+    bins (int): number of bins
+    """
+
+    table = tables.get_table(doc, table_name)
+    pages.get_page(doc, page_name, True)
+    viz_type = 'barchart'
+    for colum_name in column_names:
+
+        add_viz_to_page(doc, viz_type, column_name, table_name, page_name)
+
+
+
+def make_histograms_search(doc, table_name, column_search, page_name, color_by,
+                           bins):
+
+    column_names =  tables.get_column_names_search(doc, table_name,
+                                                   column_search,
+                                                   regex=True)
+
+    LOGGER.debug('Found %s', basic.list_string(column_names))
+
+    make_histograms(doc, table_name, column_names, page_name, color_by, bins)
+
+

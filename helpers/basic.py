@@ -208,7 +208,13 @@ def part_expression(ex_name, stat_type):
         ex_name (str): curve name
         stat_type (str): name of statistical type
     """
-    expression = stat_type + '([' + ex_name + '])'
+    if stat_type =='':
+        start = '['
+        end = ']'
+    else:
+        start = '(['
+        end = '])'
+    expression = stat_type + start + ex_name + end
     return expression
 
 
